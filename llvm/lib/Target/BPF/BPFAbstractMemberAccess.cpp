@@ -443,6 +443,7 @@ bool BPFAbstractMemberAccess::removePreserveAccessIndexIntrinsic(Function &F) {
   std::vector<CallInst *> PreserveArrayIndexCalls;
   std::vector<CallInst *> PreserveUnionIndexCalls;
   std::vector<CallInst *> PreserveStructIndexCalls;
+  std::vector<CallInst *> PreserveFieldInfoCalls;
   bool Found = false;
 
   for (auto &BB : F)
@@ -457,6 +458,8 @@ bool BPFAbstractMemberAccess::removePreserveAccessIndexIntrinsic(Function &F) {
         PreserveArrayIndexCalls.push_back(Call);
       else if (CInfo.Kind == BPFPreserveUnionAI)
         PreserveUnionIndexCalls.push_back(Call);
+      else if (CInfo.Kind == BPFPreserveFieldInfoAI)
+        PreserveFieldInfoCalls.push_back(Call);
       else
         PreserveStructIndexCalls.push_back(Call);
     }
@@ -471,6 +474,13 @@ bool BPFAbstractMemberAccess::removePreserveAccessIndexIntrinsic(Function &F) {
   // . addr = preserve_struct_access_index(base, gep_index, di_index)
   //   is transformed to
   //     addr = GEP(base, 0, gep_index)
+  // . info = preserve_field_info(addr, info_kind) is removed. A call with
+  //   users is the base of an access chain and has already been replaced
+  //   by a relocated load, so any call left here has no users.
+  for (CallInst *Call : PreserveFieldInfoCalls) {
+    assert(Call->use_empty() && "preserve_field_info result still in use");
+    Call->eraseFromParent();
+  }
   for (CallInst *Call : PreserveArrayIndexCalls)
     BPFCoreSharedInfo::removeArrayAccessCall(Call);
   for (CallInst *Call : PreserveStructIndexCalls)
